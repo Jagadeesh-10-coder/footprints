@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prompt Footprint</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --bg: #eef3f6;
+  --panel: #ffffff;
+  --ink: #12212e;
+  --muted: #5b6b78;
+  --line: #d3dde4;
+  --tokens: #4b5d8f;
+  --energy: #c98a00;
+  --water: #1f7ab8;
+  --focus: #1f7ab8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1a23; --panel: #16242f; --ink: #e6eef3; --muted: #93a5b3; --line: #26384540;
+    --tokens: #8fa3e0; --energy: #f0b73a; --water: #57b4ec;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.55 "IBM Plex Sans", system-ui, sans-serif;
+}
+header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+header { padding-top: 48px; padding-bottom: 24px; }
+h1, h2, .stat strong { font-family: "Bricolage Grotesque", "Segoe UI", sans-serif; }
+h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); font-weight: 800; margin: 0 0 8px; letter-spacing: -0.02em; }
+header p { margin: 0; color: var(--muted); max-width: 52ch; }
+h2 { font-size: 1.25rem; margin: 0 0 16px; }
+
+.totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat {
+  background: var(--panel);
+  padding: 20px;
+  border-left: 6px solid var(--c);
+  border-radius: 4px 14px 14px 4px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat.tokens { --c: var(--tokens); }
+.stat.energy { --c: var(--energy); }
+.stat.water  { --c: var(--water); }
+.stat .label { color: var(--muted); font-size: .9rem; }
+.stat strong { font-size: clamp(1.8rem, 4.5vw, 2.6rem); line-height: 1.1; color: var(--c); }
+.stat small { color: var(--muted); }
+
+.panel { background: var(--panel); padding: 24px; border-radius: 14px; margin-bottom: 24px; }
+.head { display: flex; justify-content: space-between; align-items: center; }
+.head h2 { margin: 0 0 16px; }
+
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; font-size: .95rem; }
+input, select {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.hint { color: var(--muted); font-size: .9rem; margin: 12px 0 16px; }
+
+button {
+  font: 500 1rem "IBM Plex Sans", sans-serif;
+  background: var(--water); color: #fff; border: 0; border-radius: 8px;
+  padding: 11px 20px; cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 6px 12px; font-size: .9rem; }
+button.del { background: transparent; color: var(--muted); padding: 2px 8px; font-size: 1.1rem; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+#empty { color: var(--muted); margin: 12px 0 0; }
+
+footer { padding-bottom: 48px; color: var(--muted); font-size: .85rem; }
+
+@media (max-width: 680px) { .totals { grid-template-columns: 1fr; } }
+
+textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; resize: vertical; }
+label.wide { margin: 16px 0; }
+#chatlog { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+#chatlog p { margin: 0; padding: 10px 14px; border-radius: 10px; white-space: pre-wrap; max-width: 75ch; }
+#chatlog .me { background: var(--bg); align-self: flex-end; }
+#chatlog .ai { border-left: 4px solid var(--water); }
+#chatlog .err { color: #b3261e; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Prompt Footprint</h1>
+    <p>Log the tokens you use with any LLM and see the estimated energy and water behind them.</p>
+  </header>
+
+  <main>
+    <section class="totals" aria-label="Totals">
+      <div class="stat tokens">
+        <span class="label">Tokens used</span>
+        <strong id="t-tokens">0</strong>
+        <small id="c-tokens">0 requests logged</small>
+      </div>
+      <div class="stat energy">
+        <span class="label">Energy</span>
+        <strong id="t-energy">0 Wh</strong>
+        <small id="c-energy">Nothing logged yet</small>
+      </div>
+      <div class="stat water">
+        <span class="label">Water</span>
+        <strong id="t-water">0 mL</strong>
+        <small id="c-water">Nothing logged yet</small>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Chat and track automatically</h2>
+      <div class="row">
+        <label>Provider
+          <select id="provider">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </label>
+        <label>Model name
+          <input id="mname" type="text" value="claude-sonnet-5-5">
+        </label>
+        <label>API key
+          <input id="apikey" type="password" autocomplete="off" placeholder="Paste your key">
+        </label>
+      </div>
+      <p class="hint">Your key is saved only in this browser and sent only to the provider you chose.</p>
+      <label class="wide">Your message
+        <textarea id="prompt" rows="3" placeholder="Ask anything"></textarea>
+      </label>
+      <button id="send">Send</button>
+      <div id="chatlog" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Or log a request manually</h2>
+      <div class="row">
+        <label>Model size
+          <select id="model"></select>
+        </label>
+        <label>Input tokens
+          <input id="tin" type="number" min="0" value="500">
+        </label>
+        <label>Output tokens
+          <input id="tout" type="number" min="0" value="500">
+        </label>
+        <label>Water scope
+          <select id="scope">
+            <option value="1.1">Data centre cooling only</option>
+            <option value="4.5">Cooling + power generation</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">No exact count? Roughly 4 characters or ¾ of a word is 1 token.</p>
+      <button id="add">Add to log</button>
+    </section>
+
+    <section class="panel">
+      <div class="head">
+        <h2>Your log</h2>
+        <button id="clear" class="ghost">Clear all</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Time</th><th>Model</th><th>Tokens</th><th>Energy</th><th>Water</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="empty">No requests yet. Add your first one above.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>These are estimates, not measurements. Providers do not publish exact figures, so the numbers use rough per-token averages from public studies and company disclosures. Real usage can be several times higher or lower depending on the model, hardware and data centre.</p>
+  </footer>
+
+  <script>
+// Rough assumptions. Edit these numbers as better data appears.
+// whPer1kOut = watt-hours per 1,000 output tokens. Input tokens count at 20% of that.
+const MODELS = {
+  small:     { name: "Small (Haiku-class)",       whPer1kOut: 0.15 },
+  medium:    { name: "Medium (Sonnet-class)",     whPer1kOut: 0.40 },
+  large:     { name: "Large (Opus-class)",        whPer1kOut: 1.00 },
+  reasoning: { name: "Reasoning / thinking mode", whPer1kOut: 2.00 }
+};
+const INPUT_WEIGHT = 0.2;
+const DEFAULT_NAMES = { anthropic: "claude-sonnet-5-5", openai: "gpt-4o-mini" };
+const LOG_KEY = "prompt-footprint-log";
+const KEY_KEY = "prompt-footprint-keys";
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+let log = store.get(LOG_KEY, []);
+let keys = store.get(KEY_KEY, {});
+let chat = [];
+
+// Guess the size class from the model name.
+const tierOf = (m) =>
+  /\bo[134]\b|reason|think/i.test(m) ? "reasoning" :
+  /haiku|mini|nano|flash|small/i.test(m) ? "small" :
+  /opus|fable|mythos|large|gpt-5/i.test(m) ? "large" : "medium";
+
+async function callLLM(provider, model, key, messages) {
+  if (provider === "anthropic") {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({ model, max_tokens: 1024, messages })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error?.message || "Anthropic request failed");
+    return { text: j.content.map((b) => b.text || "").join(""), tin: j.usage.input_tokens, tout: j.usage.output_tokens };
+  }
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer " + key },
+    body: JSON.stringify({ model, messages })
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message || "OpenAI request failed");
+  return { text: j.choices[0].message.content, tin: j.usage.prompt_tokens, tout: j.usage.completion_tokens };
+}
+
+function addEntry(e) {
+  log.push({ id: Date.now(), time: Date.now(), ...e });
+  store.set(LOG_KEY, log);
+  render();
+}
+
+function calc(r) {
+  const wh = (MODELS[r.model].whPer1kOut / 1000) * (r.tout + r.tin * INPUT_WEIGHT);
+  return { wh, ml: wh * parseFloat($("scope").value) };
+}
+
+const fmtNum = (n) => n.toLocaleString("en-IN");
+const fmtEnergy = (wh) => (wh >= 1000 ? (wh / 1000).toFixed(2) + " kWh" : wh.toFixed(2) + " Wh");
+const fmtWater = (ml) => (ml >= 1000 ? (ml / 1000).toFixed(2) + " L" : ml.toFixed(1) + " mL");
+
+function render() {
+  const rows = log.map((r) => ({ ...r, ...calc(r) }));
+  const tokens = rows.reduce((s, r) => s + r.tin + r.tout, 0);
+  const wh = rows.reduce((s, r) => s + r.wh, 0);
+  const ml = rows.reduce((s, r) => s + r.ml, 0);
+
+  $("t-tokens").textContent = fmtNum(tokens);
+  $("c-tokens").textContent = rows.length + (rows.length === 1 ? " request logged" : " requests logged");
+  $("t-energy").textContent = fmtEnergy(wh);
+  $("t-water").textContent = fmtWater(ml);
+  // A phone charge is about 15 Wh, a glass of water is 250 mL.
+  $("c-energy").textContent = rows.length ? "About " + (wh / 15).toFixed(2) + " phone charges" : "Nothing logged yet";
+  $("c-water").textContent = rows.length ? "About " + (ml / 250).toFixed(2) + " glasses of water" : "Nothing logged yet";
+
+  $("rows").innerHTML = rows.slice().reverse().map((r) => `
+    <tr>
+      <td>${new Date(r.time).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+      <td>${r.name === "manual" ? MODELS[r.model].name : r.name.replace(/[<>&]/g, "")}</td>
+      <td>${fmtNum(r.tin + r.tout)}</td>
+      <td>${fmtEnergy(r.wh)}</td>
+      <td>${fmtWater(r.ml)}</td>
+      <td><button class="del" data-id="${r.id}" aria-label="Delete entry">×</button></td>
+    </tr>`).join("");
+  $("empty").style.display = rows.length ? "none" : "block";
+}
+
+function showChat(text, cls) {
+  const p = document.createElement("p");
+  p.className = cls;
+  p.textContent = text;
+  $("chatlog").appendChild(p);
+}
+
+async function sendMessage() {
+  const text = $("prompt").value.trim();
+  const provider = $("provider").value;
+  const model = $("mname").value.trim();
+  const key = $("apikey").value.trim();
+  if (!text) return;
+  if (!key) { showChat("Add your " + provider + " API key first.", "err"); return; }
+  keys[provider] = key;
+  store.set(KEY_KEY, keys);
+
+  $("prompt").value = "";
+  showChat(text, "me");
+  chat.push({ role: "user", content: text });
+  $("send").disabled = true;
+  try {
+    const out = await callLLM(provider, model, key, chat);
+    chat.push({ role: "assistant", content: out.text });
+    showChat(out.text, "ai");
+    addEntry({ provider, name: model, model: tierOf(model), tin: out.tin, tout: out.tout });
+  } catch (e) {
+    chat.pop();
+    showChat(e.message, "err");
+  }
+  $("send").disabled = false;
+}
+
+function syncProvider() {
+  const p = $("provider").value;
+  $("mname").value = DEFAULT_NAMES[p];
+  $("apikey").value = keys[p] || "";
+  chat = [];
+}
+
+$("model").innerHTML = Object.entries(MODELS).map(([k, m]) => `<option value="${k}">${m.name}</option>`).join("");
+$("model").value = "medium";
+
+$("send").addEventListener("click", sendMessage);
+$("provider").addEventListener("change", syncProvider);
+$("scope").addEventListener("change", render);
+$("add").addEventListener("click", () => {
+  const tin = Math.max(0, parseInt($("tin").value, 10) || 0);
+  const tout = Math.max(0, parseInt($("tout").value, 10) || 0);
+  if (tin + tout === 0) { $("tin").focus(); return; }
+  addEntry({ provider: "manual", name: "manual", model: $("model").value, tin, tout });
+});
+$("clear").addEventListener("click", () => {
+  if (log.length && confirm("Delete all logged requests?")) { log = []; store.set(LOG_KEY, log); render(); }
+});
+$("rows").addEventListener("click", (e) => {
+  const id = e.target.dataset.id;
+  if (id) { log = log.filter((r) => String(r.id) !== id); store.set(LOG_KEY, log); render(); }
+});
+
+syncProvider();
+render();
+</script>
+</body>
+</html>
